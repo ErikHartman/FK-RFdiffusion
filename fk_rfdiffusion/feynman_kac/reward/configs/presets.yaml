@@ -1,0 +1,59 @@
+interface_dG:
+  function: interface_dG
+  description: "Optimize protein-protein interface binding energy"
+  tau: 10.0
+
+interface_dGdSASA:
+  function: interface_dGdSASA
+  description: "Optimize protein-protein interface binding energy normalized by delta SASA"
+  tau: 10.0
+
+interface_dSASA:
+  function: interface_dSASA
+  description: "Optimize protein-protein interface delta SASA"
+  tau: 100.0
+
+positive_charge:
+  function: positive_charge
+  target_charge: 5
+  description: "Optimize for positive net charge"
+  tau: 1.0
+
+negative_charge:
+  function: negative_charge
+  target_charge: -10
+  description: "Optimize for negative net charge"
+  tau: 1.0
+
+alpha_helix_ss:
+  function: secondary_structure
+  target_alpha: 0.9
+  target_beta: 0.0
+  target_loop: 0.1
+  weight_alpha: 2.0
+  weight_beta: 0.5
+  weight_loop: 0.5
+  description: "Optimize for alpha helix secondary structure"
+  tau: 0.2
+
+beta_sheet_ss:
+  function: secondary_structure
+  target_alpha: 0.0
+  target_beta: 0.9
+  target_loop: 0.1
+  weight_alpha: 0.5
+  weight_beta: 2.0
+  weight_loop: 0.5
+  description: "Optimize for beta sheet secondary structure"
+  tau: 0.2
+
+loop_ss:
+  function: secondary_structure
+  target_alpha: 0.0
+  target_beta: 0.0
+  target_loop: 1.0
+  weight_alpha: 0.5
+  weight_beta: 0.5
+  weight_loop: 2.0
+  description: "Optimize for loop/coil secondary structure"
+  tau: 0.2
