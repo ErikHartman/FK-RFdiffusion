@@ -1,14 +1,16 @@
 # FK-RFdiffusion
 
-Feynman-Kac guided protein design using RFdiffusion. This package implements particle filtering to optimize binding affinity, secondary structure, and other design objectives during the diffusion process.
+![](rfd_fk.png)
+
+Feynman-Kac guided protein design using RFdiffusion. This package implements particle filtering to optimize design objectives during the diffusion process.
 
 ## Overview
 
 FK-RFdiffusion extends [RFdiffusion](https://github.com/RosettaCommons/RFdiffusion) with Feynman-Kac particle filtering for guided protein design. Instead of blind sampling, it guides the generative process toward desired properties like:
 
 - **Binding affinity** (interface ΔG)
-- **Secondary structure** (alpha helix, beta sheet, loops)
-- **Sequence properties** (charge, hydrophobicity, SASA)
+- **Secondary structure**
+- **Sequence properties**
 
 The method uses multiple particles that are resampled based on reward functions evaluated during the diffusion trajectory.
 
@@ -44,25 +46,25 @@ pip install .
 cd ../../..
 ```
 
-### 4. Install additional dependencies for FK-RFdiffusion
+### 4a. Install additional dependencies for FK-RFdiffusion
 
 ```bash
 pip install pydssp biopython
 ```
+
+### 4b. Install PyRosetta
 
 ### 5. Download RFdiffusion weights
 
 ```bash
 cd externals/RFdiffusion
 mkdir -p models && cd models
-
-# Download Complex/Binder design checkpoint
 wget http://files.ipd.uw.edu/pub/RFdiffusion/e29311f6f1bf1af907f9ef9f44b8328b/Complex_base_ckpt.pt
 
 cd ../../..
 ```
 
-### 6. Install ProteinMPNN (optional, for sequence design in rewards)
+### 6. Install ProteinMPNN
 
 ```bash
 cd externals/ProteinMPNN
@@ -101,19 +103,8 @@ run_feynman_kac_design(
 )
 ```
 
-### Variable Length Binder Design
 
-```python
-run_feynman_kac_design(
-    contigs=["A1-50/0 15-25"],        # Binder length varies 15-25 residues
-    target_structure="target.pdb",
-    reward_function="interface_dG",
-    n_runs=20,                         # Multiple runs with different lengths
-    output_prefix="./designs/var_binder"
-)
-```
-
-## Available Reward Functions
+## Available Reward Functions (current)
 
 - `interface_dG` - Binding energy (lower is better)
 - `alpha_helix_ss` - Alpha helix secondary structure content
@@ -166,7 +157,7 @@ If you use this code, please cite:
 
 ## License
 
-[Add your license here]
+MIT
 
 ## Troubleshooting
 
