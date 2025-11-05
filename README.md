@@ -15,8 +15,12 @@ FK-RFdiffusion extends [RFdiffusion](https://github.com/RosettaCommons/RFdiffusi
 
 ### 1. Clone this repository with submodules
 
+FK-RFdiffusion is built as a wrapper around RFdiffusion. It also uses ProteinMPNN in its reward function. We therefore use have RFdiffusion and ProteinMPNN as submodules.
+
+To install with submodules, use the `--recursive`. This will clone RFdiffusion and ProteinMPNN into externals.
+
 ```bash
-git clone --recursive https://github.com/YOUR_USERNAME/fk-rfdiffusion.git
+git clone --recursive https://github.com/ErikHartman/fk-rfdiffusion.git
 cd fk-rfdiffusion
 ```
 
@@ -33,14 +37,19 @@ First, follow the [RFdiffusion installation instructions](https://github.com/Ros
 
 ### 3. Install additional dependencies for FK-RFdiffusion
 
+We have extra dependencies for the reward functions. PyDSSP is used for secondary structure computation and biopython for sequence-based features.
+
 ```bash
 pip install pydssp biopython
 ```
 
+### 3b. Install PyRosetta
+
+Install pyrosetta according to the [documentation](https://pypi.org/project/pyrosetta-installer/).
 
 ## Quick start (examples)
 
-### Binder Design with interface $\Delta G$ guidance
+### Binder design with interface $\Delta G$ guidance
 
 ```python
 from fk_rfdiffusion.run_inference_guided import run_feynman_kac_design
@@ -57,7 +66,7 @@ run_feynman_kac_design(
 )
 ```
 
-### Unconditional Design with Secondary Structure Guidance
+### Unconditional design with secondary structure guidance
 
 ```python
 run_feynman_kac_design(
@@ -69,7 +78,6 @@ run_feynman_kac_design(
 )
 ```
 
-
 ## Available Reward Functions (current)
 
 - `interface_dG` - Binding energy (lower is better)
@@ -80,7 +88,7 @@ run_feynman_kac_design(
 - `sequence_charged_positive` - Positive charge content
 - `sequence_charged_negative` - Negative charge content
 
-You can also pass a `custom_reward_fn`. More documentation soon.
+You can also pass a `custom_reward_fn`. More documentation soon!
 
 See `fk_rfdiffusion/feynman_kac/reward/configs/presets.yaml` for full configuration options.
 
