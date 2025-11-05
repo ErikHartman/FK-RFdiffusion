@@ -36,6 +36,7 @@ def run_feynman_kac_design(
     final_step: int = 1,
     checkpoint: str = "base",
     reward_function: Optional[str] = None,
+    custom_reward_fn: Optional[callable] = None,
     n_sequences: int = 1,
     aggregation_mode: str = "mean",
     **kwargs
@@ -66,6 +67,8 @@ def run_feynman_kac_design(
         final_step: Final diffusion step
         checkpoint: RFdiffusion checkpoint to use - "base" or "beta" (default: "base")
         reward_function: Name of predefined reward function (e.g., "interface_dG", "alpha_helix_ss").
+        custom_reward_fn: Custom reward function with signature (pdb_path: str) -> Tuple[float, str, dict].
+            Cannot be used together with reward_function.
         n_sequences: Number of sequences to generate per MPNN evaluation for better reward estimates (default: 1)
         aggregation_mode: How to aggregate multiple sequence rewards - "mean" or "max" (default: "mean")
         **kwargs: Additional config overrides
@@ -96,6 +99,10 @@ def run_feynman_kac_design(
     ensure_pyrosetta_initialized()
     design_mode = infer_design_mode_from_contigs(contigs)
     print(f"Design mode: {design_mode}")
+    
+    # Validate that only one reward method is specified
+    if custom_reward_fn is not None and reward_function is not None:
+        raise ValueError("Cannot specify both custom_reward_fn and reward_function. Choose one.")
     
     conf = load_config_with_defaults()
     checkpoint_path = get_checkpoint_path(design_mode, checkpoint)
@@ -196,17 +203,20 @@ def run_feynman_kac_design(
     conf = auto_detect_chain_assignments(conf, design_mode)
     
     validate_config(conf)
-    run_guided_inference(conf, contigs, sampled_contigs_list)
+    run_guided_inference(conf, contigs, sampled_contigs_list, custom_reward_fn)
 
     if temp_pdb_path and original_target_structure:
         cleanup_temp_pdb(temp_pdb_path, original_target_structure)
 
 
-def run_guided_inference(conf, original_contigs: List[str], sampled_contigs_list: List[List[str]]):
+def run_guided_inference(conf, original_contigs: List[str], sampled_contigs_list: List[List[str]], custom_reward_fn=None):
     """Run guided inference with Feynman-Kac sampler"""
     
     # Save the original config (with length ranges) for reference
-    configured_reward_fn = get_reward_function(conf)
+    if custom_reward_fn is not None:
+        configured_reward_fn = custom_reward_fn
+    else:
+        configured_reward_fn = get_reward_function(conf)
     print(OmegaConf.to_yaml(conf))
     output_prefix = conf.inference.output_prefix
     output_dir = Path(output_prefix)

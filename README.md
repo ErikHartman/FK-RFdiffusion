@@ -1,7 +1,7 @@
 # FK-RFdiffusion
 Feynman-Kac guided protein design using RFdiffusion. This package implements particle filtering to optimize design objectives during the diffusion process.
 
-> **Disclaimer:**  We are currently working on making FK-RFdiffusion easily accessible through improved documentation, package-managing and Colab notebooks. For now, follow the instructions below to install FK-RFdiffusion locally by cloning the repo.
+> **Disclaimer:**  We are currently working on making FK-RFdiffusion easily accessible through improved modifiability, documentation, package-managing and Colab notebooks. For now, follow the instructions below to install FK-RFdiffusion locally by cloning the repo.
 
 ![](rfd_fk.png)
 
@@ -80,6 +80,8 @@ run_feynman_kac_design(
 - `sequence_charged_positive` - Positive charge content
 - `sequence_charged_negative` - Negative charge content
 
+You can also pass a `custom_reward_fn`. More documentation soon.
+
 See `fk_rfdiffusion/feynman_kac/reward/configs/presets.yaml` for full configuration options.
 
 ## Key Parameters
@@ -96,9 +98,7 @@ See `fk_rfdiffusion/feynman_kac/reward/configs/presets.yaml` for full configurat
 
 ## Advanced Usage
 
-### Custom Reward Functions
 
-See `fk_rfdiffusion/feynman_kac/reward/` for examples of implementing custom reward functions.
 
 ## Citation
 
