@@ -1,26 +1,19 @@
 # FK-RFdiffusion
+Feynman-Kac guided protein design using RFdiffusion. This package implements particle filtering to optimize design objectives during the diffusion process.
+
+> **Disclaimer:**  We are currently working on making FK-RFdiffusion easily accessible through improved documentation, package-managing and Colab notebooks. For now, follow the instructions below to install FK-RFdiffusion locally by cloning the repo.
 
 ![](rfd_fk.png)
 
-Feynman-Kac guided protein design using RFdiffusion. This package implements particle filtering to optimize design objectives during the diffusion process.
+
 
 ## Overview
 
-FK-RFdiffusion extends [RFdiffusion](https://github.com/RosettaCommons/RFdiffusion) with Feynman-Kac particle filtering for guided protein design. Instead of blind sampling, it guides the generative process toward desired properties like:
-
-- **Binding affinity** (interface ΔG)
-- **Secondary structure**
-- **Sequence properties**
-
-The method uses multiple particles that are resampled based on reward functions evaluated during the diffusion trajectory.
+FK-RFdiffusion extends [RFdiffusion](https://github.com/RosettaCommons/RFdiffusion) with [Feynman-Kac particle filtering](https://arxiv.org/abs/2501.06848) for guided protein design. Instead of blind sampling, it guides the generative process toward desired properties.
 
 ## Installation
 
-### 1. Set up RFdiffusion Environment
-
-First, follow the [RFdiffusion installation instructions](https://github.com/RosettaCommons/RFdiffusion) to set up the base environment. 
-
-### 2. Clone this repository with submodules
+### 1. Clone this repository with submodules
 
 ```bash
 git clone --recursive https://github.com/YOUR_USERNAME/fk-rfdiffusion.git
@@ -33,48 +26,21 @@ If you already cloned without `--recursive`, initialize submodules:
 git submodule update --init --recursive
 ```
 
-### 3. Install RFdiffusion
+### 2. Set up RFdiffusion Environment
 
-```bash
-cd externals/RFdiffusion
-pip install -e . --no-deps
+First, follow the [RFdiffusion installation instructions](https://github.com/RosettaCommons/RFdiffusion) to set up the base environment. This includes creating a conda environment and setting up weights. If you can call the standard RFdiffusion `run_inference.py` script, you can continue. 
 
-# Install SE(3) Transformer
-cd env/SE3Transformer
-pip install -r requirements.txt
-pip install .
-cd ../../..
-```
 
-### 4a. Install additional dependencies for FK-RFdiffusion
+### 3. Install additional dependencies for FK-RFdiffusion
 
 ```bash
 pip install pydssp biopython
 ```
 
-### 4b. Install PyRosetta
 
-### 5. Download RFdiffusion weights
+## Quick start (examples)
 
-```bash
-cd externals/RFdiffusion
-mkdir -p models && cd models
-wget http://files.ipd.uw.edu/pub/RFdiffusion/e29311f6f1bf1af907f9ef9f44b8328b/Complex_base_ckpt.pt
-
-cd ../../..
-```
-
-### 6. Install ProteinMPNN
-
-```bash
-cd externals/ProteinMPNN
-pip install -e .
-cd ../..
-```
-
-## Quick Start
-
-### Binder Design with Interface Energy Guidance
+### Binder Design with interface $\Delta G$ guidance
 
 ```python
 from fk_rfdiffusion.run_inference_guided import run_feynman_kac_design
@@ -134,19 +100,6 @@ See `fk_rfdiffusion/feynman_kac/reward/configs/presets.yaml` for full configurat
 
 See `fk_rfdiffusion/feynman_kac/reward/` for examples of implementing custom reward functions.
 
-### Multiple Sequence Evaluation
-
-```python
-run_feynman_kac_design(
-    contigs=["A1-50/0 20"],
-    target_structure="target.pdb",
-    reward_function="interface_dG",
-    n_sequences=5,              # Generate 5 sequences per structure
-    aggregation_mode="mean",    # Average their rewards
-    ...
-)
-```
-
 ## Citation
 
 If you use this code, please cite:
@@ -157,21 +110,4 @@ If you use this code, please cite:
 
 ## License
 
-MIT
-
-## Troubleshooting
-
-### ImportError: No module named 'rfdiffusion'
-
-Make sure RFdiffusion is installed in editable mode: `pip install -e externals/RFdiffusion --no-deps`
-
-### CUDA errors
-
-Ensure your PyTorch and DGL installations match your CUDA version. Check with:
-```bash
-python -c "import torch; print(torch.cuda.is_available())"
-```
-
-### Reward function errors
-
-Some reward functions require PyRosetta. See reward function documentation for dependencies.
+[MIT](LICENSE)
