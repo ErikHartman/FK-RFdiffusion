@@ -123,3 +123,59 @@ def sample_contig_lengths(contigs: List[str], n_runs: int) -> List[List[str]]:
         sampled_contigs.append(run_contigs)
     
     return sampled_contigs
+
+
+def get_symmetry_order(symmetry: str) -> int:
+    """
+    Extract the numerical order from a symmetry string.
+    """
+    if symmetry is None:
+        return 1
+    
+    symmetry_lower = symmetry.lower()
+    if symmetry_lower.startswith('c'):
+        if symmetry[1:].isdigit():
+            return int(symmetry[1:])
+        raise ValueError(f"Invalid cyclic symmetry format: {symmetry}")
+    elif symmetry_lower.startswith('d'):
+        if symmetry[1:].isdigit():
+            return int(symmetry[1:]) * 2  # Dihedral has 2n subunits
+        raise ValueError(f"Invalid dihedral symmetry format: {symmetry}")
+    elif symmetry_lower in ['t3', 'tetrahedral']:
+        return 4
+    elif symmetry_lower == 'octahedral':
+        return 24
+    elif symmetry_lower == 'icosahedral':
+        return 60
+    
+    else:
+        raise ValueError(f"Unrecognized symmetry: {symmetry}")
+
+
+def validate_symmetry_contigs(contigs: List[str], symmetry: str) -> None:
+    """
+    Validate that contig lengths are compatible with the specified symmetry.
+    
+    For symmetric assemblies, the total length must be divisible by the symmetry order.
+    """
+    if symmetry is None:
+        return
+    
+    order = get_symmetry_order(symmetry)
+    
+    # Parse total length from contigs
+    for contig in contigs:
+        # For unconditional design, contigs are just numbers or ranges
+        # Extract all numbers (ignoring chain identifiers and slashes)
+        numbers = re.findall(r'\b(\d+)\b', contig.replace('-', ' '))
+        
+        if numbers:
+            # For symmetry, we expect a single total length specification
+            total_length = int(numbers[0])
+            
+            if total_length % order != 0:
+                raise ValueError(
+                    f"Contig length {total_length} is not divisible by symmetry order {order} "
+                    f"for {symmetry} symmetry. Each subunit would have {total_length}/{order} = "
+                    f"{total_length/order:.2f} residues. Please use a length divisible by {order}."
+                )

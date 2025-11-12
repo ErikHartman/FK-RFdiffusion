@@ -5,8 +5,6 @@ Feynman-Kac guided protein design using RFdiffusion. This package implements par
 
 ![](rfd_fk.png)
 
-
-
 ## Overview
 
 FK-RFdiffusion extends [RFdiffusion](https://github.com/RosettaCommons/RFdiffusion) with [Feynman-Kac particle filtering](https://arxiv.org/abs/2501.06848) for guided protein design. Instead of blind sampling, it guides the generative process toward desired properties.

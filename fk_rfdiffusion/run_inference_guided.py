@@ -11,7 +11,7 @@ from rfdiffusion.inference import utils as iu
 
 from .feynman_kac.feynman_kac import FeynmanKacSampler
 from .feynman_kac.reward import ensure_pyrosetta_initialized, get_reward_function
-from .utils import get_checkpoint_path, parse_structure_file, cleanup_temp_pdb, infer_design_mode_from_contigs, detect_length_ranges, sample_contig_lengths
+from .utils import get_checkpoint_path, parse_structure_file, cleanup_temp_pdb, infer_design_mode_from_contigs, detect_length_ranges, sample_contig_lengths, validate_symmetry_contigs
 from .config.utils import (
     load_config_with_defaults, 
     auto_detect_chain_assignments, 
@@ -39,6 +39,7 @@ def run_feynman_kac_design(
     custom_reward_fn: Optional[callable] = None,
     n_sequences: int = 1,
     aggregation_mode: str = "mean",
+    symmetry: Optional[str] = None,
     **kwargs
 ) -> None:
     """
@@ -71,6 +72,8 @@ def run_feynman_kac_design(
             Cannot be used together with reward_function.
         n_sequences: Number of sequences to generate per MPNN evaluation for better reward estimates (default: 1)
         aggregation_mode: How to aggregate multiple sequence rewards - "mean" or "max" (default: "mean")
+        symmetry: Symmetry specification for symmetric assemblies (e.g., 'C5', 'C3', 'D2', 'tetrahedral', 'icosahedral').
+            Contig length must be divisible by symmetry order. Default: None (no symmetry)
         **kwargs: Additional config overrides
         
     Examples:
@@ -88,6 +91,14 @@ def run_feynman_kac_design(
         ...     n_runs=10
         ... )
         
+        Symmetric assembly design (C5 pentamer):
+        >>> run_feynman_kac_design(
+        ...     contigs=["100"],
+        ...     symmetry="C5",
+        ...     reward_function="some_reward",
+        ...     n_runs=5
+        ... )
+        
         Unconditional design with length range:
         >>> run_feynman_kac_design(
         ...     contigs=["50-75"],
@@ -103,6 +114,11 @@ def run_feynman_kac_design(
     # Validate that only one reward method is specified
     if custom_reward_fn is not None and reward_function is not None:
         raise ValueError("Cannot specify both custom_reward_fn and reward_function. Choose one.")
+    
+    # Validate symmetry and contig compatibility
+    if symmetry is not None:
+        validate_symmetry_contigs(contigs, symmetry)
+        print(f"Symmetry: {symmetry}")
     
     conf = load_config_with_defaults()
     checkpoint_path = get_checkpoint_path(design_mode, checkpoint)
@@ -147,6 +163,9 @@ def run_feynman_kac_design(
     
     if hotspot_res is not None:
         overrides['ppi']['hotspot_res'] = hotspot_res
+    
+    if symmetry is not None:
+        overrides['inference']['symmetry'] = symmetry
     
     # Handle length range sampling for contigs
     has_length_ranges = detect_length_ranges(contigs) if contigs is not None else False
