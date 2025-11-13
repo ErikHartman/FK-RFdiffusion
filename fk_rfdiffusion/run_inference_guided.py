@@ -267,7 +267,8 @@ def run_guided_inference(conf, original_contigs: List[str], sampled_contigs_list
                 design_chain=str(conf.reward.design_chain),
                 mpnn_config=mpnn_config,
                 n_sequences=conf.reward.n_sequences,
-                aggregation_mode=conf.reward.aggregation_mode
+                aggregation_mode=conf.reward.aggregation_mode,
+                is_symmetric=bool(conf.inference.symmetry is not None and conf.inference.symmetry != '')
             )
         else:
             configured_reward_fn = custom_reward_fn

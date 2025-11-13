@@ -68,7 +68,8 @@ def get_reward_function(conf: DictConfig):
         design_chain=str(conf.reward.design_chain),
         mpnn_config=mpnn_config,
         n_sequences=n_sequences,
-        aggregation_mode=aggregation_mode
+        aggregation_mode=aggregation_mode,
+        is_symmetric=bool(conf.inference.symmetry is not None and conf.inference.symmetry != '')
     )
 
     if conf.feynman_kac.tau is None:

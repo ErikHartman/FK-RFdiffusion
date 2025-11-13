@@ -24,10 +24,13 @@ def ensure_pyrosetta_initialized():
         init(init_flags)
         _pyrosetta_initialized = True
 
-def run_mpnn_and_thread(pdb_path: str, design_chain: str, mpnn_config: dict = None, n_sequences: int = 1) -> Tuple[List[object], List[str]]:
+def run_mpnn_and_thread(pdb_path: str, design_chain: str, mpnn_config: dict = None, n_sequences: int = 1, is_symmetric: bool = False) -> Tuple[List[object], List[str]]:
     """
     Run ProteinMPNN and thread multiple sequences.
     Returns lists of (threaded_poses, designed_sequences) for multiple evaluations.
+    
+    Args:
+        is_symmetric: If True, applies the designed sequence to all chains (for symmetric assemblies)
     """
     pdb_path = Path(pdb_path).resolve()
     output_dir = Path(tempfile.mkdtemp(prefix="mpnn_"))
@@ -39,7 +42,7 @@ def run_mpnn_and_thread(pdb_path: str, design_chain: str, mpnn_config: dict = No
     
     for designed_seq in designed_sequences:
         threaded_pose = _thread_sequence_onto_structure(
-            pdb_path, designed_seq, design_chain, output_dir
+            pdb_path, designed_seq, design_chain, output_dir, is_symmetric
         )
         threaded_poses.append(threaded_pose)
     
@@ -83,12 +86,13 @@ class MultiSequenceEvaluator:
     """
     
     def __init__(self, single_sequence_evaluator, design_chain: str, mpnn_config: dict, 
-                 n_sequences: int = 1, aggregation_mode: str = "mean", **kwargs):
+                 n_sequences: int = 1, aggregation_mode: str = "mean", is_symmetric: bool = False, **kwargs):
         self.single_sequence_evaluator = single_sequence_evaluator
         self.design_chain = design_chain
         self.mpnn_config = mpnn_config or {}
         self.n_sequences = n_sequences
         self.aggregation_mode = aggregation_mode
+        self.is_symmetric = is_symmetric
         self.kwargs = kwargs
     
     def __call__(self, pdb_path: str) -> Tuple[float, str, dict]:
@@ -96,7 +100,7 @@ class MultiSequenceEvaluator:
         Evaluate multiple sequences and return aggregated results.
         """
         if self.n_sequences == 1:
-            poses, sequences = run_mpnn_and_thread(pdb_path, self.design_chain, self.mpnn_config, 1)
+            poses, sequences = run_mpnn_and_thread(pdb_path, self.design_chain, self.mpnn_config, 1, self.is_symmetric)
             pose, sequence = poses[0], sequences[0]
             pack_and_minimize_pose(pose)
             
@@ -104,31 +108,12 @@ class MultiSequenceEvaluator:
             refined_pdb_path = save_pose(pose, pdb_path)
             reward_dict['pdb_path'] = refined_pdb_path
             
-            # Return the full pose sequence with chains separated by '/'
-            chain_sequences = []
-            pdb_info = pose.pdb_info()
-            current_chain = None
-            current_seq = []
-            
-            for i in range(1, pose.total_residue() + 1):
-                chain = pdb_info.chain(i)
-                if current_chain is None:
-                    current_chain = chain
-                elif chain != current_chain:
-                    chain_sequences.append(''.join(current_seq))
-                    current_seq = []
-                    current_chain = chain
-                current_seq.append(pose.residue(i).name1())
-            
-            # Don't forget the last chain
-            if current_seq:
-                chain_sequences.append(''.join(current_seq))
-            
-            full_sequence = '/'.join(chain_sequences)
-            return reward, full_sequence, reward_dict
+            # Extract and return sequences
+            output_sequence = _extract_designed_sequences(pose, self.design_chain, self.is_symmetric)
+            return reward, output_sequence, reward_dict
         
         # Multi-sequence evaluation
-        poses, sequences = run_mpnn_and_thread(pdb_path, self.design_chain, self.mpnn_config, self.n_sequences)
+        poses, sequences = run_mpnn_and_thread(pdb_path, self.design_chain, self.mpnn_config, self.n_sequences, self.is_symmetric)
         
         rewards = []
         reward_dicts = []
@@ -177,32 +162,13 @@ class MultiSequenceEvaluator:
         final_pdb_path = save_pose(best_pose, pdb_path)
         best_reward_dict['pdb_path'] = final_pdb_path
         
-        # Return the full pose sequence with chains separated by '/'
-        chain_sequences = []
-        pdb_info = best_pose.pdb_info()
-        current_chain = None
-        current_seq = []
-        
-        for i in range(1, best_pose.total_residue() + 1):
-            chain = pdb_info.chain(i)
-            if current_chain is None:
-                current_chain = chain
-            elif chain != current_chain:
-                chain_sequences.append(''.join(current_seq))
-                current_seq = []
-                current_chain = chain
-            current_seq.append(best_pose.residue(i).name1())
-        
-        # Don't forget the last chain
-        if current_seq:
-            chain_sequences.append(''.join(current_seq))
-        
-        full_sequence = '/'.join(chain_sequences)
+        # Extract and return sequences
+        output_sequence = _extract_designed_sequences(best_pose, self.design_chain, self.is_symmetric)
         
         print(f"Final aggregated reward ({self.aggregation_mode}): {final_reward:.3f}")
         print(f"Best designed chain sequence: {sequences[best_idx]}")
         
-        return final_reward, full_sequence, best_reward_dict
+        return final_reward, output_sequence, best_reward_dict
 
 
 def save_pose(pose, pdb_path: str) -> str:
@@ -211,6 +177,50 @@ def save_pose(pose, pdb_path: str) -> str:
     refined_pdb = pdb_path_obj.parent / f"{pdb_path_obj.stem}_refined.pdb"
     pose.dump_pdb(str(refined_pdb))
     return str(refined_pdb)
+
+def _extract_designed_sequences(pose, design_chain: str, is_symmetric: bool) -> str:
+    """Extract sequences for designed chains from a pose.
+    
+    Args:
+        pose: PyRosetta pose
+        design_chain: Which chain(s) were designed (e.g., "A", "B", "AB")
+        is_symmetric: If True, return all chains (for symmetric assemblies)
+    
+    Returns:
+        Sequence string with chains separated by '/' if multiple chains
+    """
+    pdb_info = pose.pdb_info()
+    
+    # Build full chain-to-sequence mapping
+    chain_to_seq = {}
+    current_chain = None
+    current_seq = []
+    
+    for i in range(1, pose.total_residue() + 1):
+        chain = pdb_info.chain(i)
+        if current_chain is None:
+            current_chain = chain
+        elif chain != current_chain:
+            chain_to_seq[current_chain] = ''.join(current_seq)
+            current_seq = []
+            current_chain = chain
+        current_seq.append(pose.residue(i).name1())
+    
+    # Don't forget the last chain
+    if current_seq:
+        chain_to_seq[current_chain] = ''.join(current_seq)
+    
+    # Determine which chains to output
+    if is_symmetric:
+        # Symmetric: output all chains
+        all_chains = sorted(chain_to_seq.keys())
+        sequences_to_output = [chain_to_seq[chain] for chain in all_chains]
+    else:
+        # Non-symmetric: output only designed chains
+        design_chains = list(design_chain)  # "AB" -> ['A', 'B']
+        sequences_to_output = [chain_to_seq[chain] for chain in design_chains if chain in chain_to_seq]
+    
+    return '/'.join(sequences_to_output)
 
 def _run_proteinmpnn(
     pdb_path: Path, 
@@ -310,8 +320,20 @@ def _thread_sequence_onto_structure(
     designed_seq: str,
     design_chain: str,
     output_dir: Path,
+    is_symmetric: bool = False,
 ):
-    """Thread designed sequence onto structure, return pose"""
+    """Thread designed sequence(s) onto structure, return pose.
+    
+    Logic:
+    1. If designed_seq contains '/': multi-chain design, thread each part onto respective chain
+    2. If is_symmetric=True: thread single sequence onto all chains
+    3. Otherwise: thread single sequence onto specified design_chain only
+    
+    Args:
+        designed_seq: Sequence from ProteinMPNN (may contain '/' for multi-chain)
+        design_chain: Which chain(s) to design (e.g., "A", "B", "AB")
+        is_symmetric: If True, apply sequence to all chains (for C3, C5, etc.)
+    """
     
     cleaned_pdb = output_dir / "cleaned_structure.pdb"
     _clean_rfdiffusion_pdb(pdb_path, cleaned_pdb)
@@ -319,15 +341,61 @@ def _thread_sequence_onto_structure(
     pose = pose_from_pdb(str(cleaned_pdb))
     pdb_info = pose.pdb_info()
     
-    # Find residues in design chain and thread sequence
-    chain_indices = [
-        i for i in range(1, pose.total_residue() + 1) 
-        if pdb_info.chain(i) == design_chain
-    ]
+    # Get all unique chains in the structure (sorted alphabetically)
+    all_chains = sorted(set(pdb_info.chain(i) for i in range(1, pose.total_residue() + 1)))
+    
+    # Build dictionary of chain -> residue indices
+    chain_to_indices = {}
+    for chain in all_chains:
+        chain_to_indices[chain] = [
+            i for i in range(1, pose.total_residue() + 1) 
+            if pdb_info.chain(i) == chain
+        ]
     
     rsd_set = pose.residue_type_set_for_pose(rosetta.core.chemical.FULL_ATOM_t)
     
-    for offset, aa in enumerate(designed_seq):
+    # Parse which chains should be designed
+    design_chains = list(design_chain)  # "AB" -> ['A', 'B']
+    
+    # Determine threading strategy
+    if '/' in designed_seq:
+        # Case 1: Multi-chain design - MPNN designed multiple chains
+        chain_sequences = designed_seq.split('/')
+        chains_to_thread = design_chains
+        
+        if len(chain_sequences) != len(chains_to_thread):
+            raise ValueError(
+                f"Designed sequence has {len(chain_sequences)} parts but design_chain specifies {len(chains_to_thread)} chains: {chains_to_thread}"
+            )
+        
+        # Thread each chain's sequence onto its respective chain
+        for chain, seq in zip(chains_to_thread, chain_sequences):
+            _thread_single_chain(pose, chain, seq, chain_to_indices, rsd_set)
+            
+    elif is_symmetric:
+        # Case 2: Symmetric design - apply same sequence to all chains
+        for chain in all_chains:
+            _thread_single_chain(pose, chain, designed_seq, chain_to_indices, rsd_set)
+            
+    else:
+        # Case 3: Single chain design (e.g., binder) - only design specified chain
+        for chain in design_chains:
+            _thread_single_chain(pose, chain, designed_seq, chain_to_indices, rsd_set)
+
+    return pose
+
+def _thread_single_chain(pose, chain: str, sequence: str, chain_to_indices: dict, rsd_set):
+    """Thread a sequence onto a single chain in the pose."""
+    if chain not in chain_to_indices:
+        raise ValueError(f"Chain {chain} not found in structure. Available chains: {sorted(chain_to_indices.keys())}")
+    
+    chain_indices = chain_to_indices[chain]
+    if len(chain_indices) != len(sequence):
+        raise ValueError(
+            f"Chain {chain} has {len(chain_indices)} residues but sequence has {len(sequence)}"
+        )
+    
+    for offset, aa in enumerate(sequence):
         resi = chain_indices[offset]
         aa_enum = rosetta.core.chemical.aa_from_oneletter_code(aa)
         name3 = rosetta.core.chemical.name_from_aa(aa_enum)
@@ -335,8 +403,6 @@ def _thread_sequence_onto_structure(
             rsd_set.name_map(name3)
         )
         pose.replace_residue(resi, new_res, True)
-
-    return pose
 
 def _clean_rfdiffusion_pdb(pdb_path: Path, output_path: Path) -> Path:
     """Clean RFdiffusion PDB by replacing MAS with ALA"""
