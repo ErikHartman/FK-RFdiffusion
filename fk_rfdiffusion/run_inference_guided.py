@@ -208,6 +208,9 @@ def run_feynman_kac_design(
         
     if reward_function is not None:
         overrides['reward']['function'] = reward_function
+    elif custom_reward_fn is not None:
+        # Document custom reward function name in config
+        overrides['reward']['function'] = f"custom:{custom_reward_fn.__name__}"
 
     # Set multi-sequence evaluation parameters
     overrides['reward']['n_sequences'] = n_sequences

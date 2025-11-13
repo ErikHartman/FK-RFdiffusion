@@ -26,10 +26,12 @@ def auto_detect_chain_assignments(conf: DictConfig, design_mode: str) -> DictCon
 
 def validate_config(conf: DictConfig) -> None:
     if conf.reward.function is not None:
-        available_presets = list_presets()
-        if conf.reward.function not in available_presets:
-            raise ValueError(f"Invalid reward preset: {conf.reward.function}. "
-                           f"Available presets: {list(available_presets.keys())}")
+        # Skip validation for custom reward functions (prefixed with "custom:")
+        if not conf.reward.function.startswith("custom:"):
+            available_presets = list_presets()
+            if conf.reward.function not in available_presets:
+                raise ValueError(f"Invalid reward preset: {conf.reward.function}. "
+                               f"Available presets: {list(available_presets.keys())}")
     
     valid_modes = ['immediate', 'difference', 'max', 'sum', 'blind']
     if conf.feynman_kac.potential_mode not in valid_modes:
