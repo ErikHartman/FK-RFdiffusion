@@ -100,11 +100,32 @@ class MultiSequenceEvaluator:
             pose, sequence = poses[0], sequences[0]
             pack_and_minimize_pose(pose)
             
-            reward, seq, reward_dict = self.single_sequence_evaluator(pose, sequence, self.design_chain, **self.kwargs)
+            reward, _, reward_dict = self.single_sequence_evaluator(pose, sequence, design_chain=self.design_chain, **self.kwargs)
             refined_pdb_path = save_pose(pose, pdb_path)
             reward_dict['pdb_path'] = refined_pdb_path
             
-            return reward, seq, reward_dict
+            # Return the full pose sequence with chains separated by '/'
+            chain_sequences = []
+            pdb_info = pose.pdb_info()
+            current_chain = None
+            current_seq = []
+            
+            for i in range(1, pose.total_residue() + 1):
+                chain = pdb_info.chain(i)
+                if current_chain is None:
+                    current_chain = chain
+                elif chain != current_chain:
+                    chain_sequences.append(''.join(current_seq))
+                    current_seq = []
+                    current_chain = chain
+                current_seq.append(pose.residue(i).name1())
+            
+            # Don't forget the last chain
+            if current_seq:
+                chain_sequences.append(''.join(current_seq))
+            
+            full_sequence = '/'.join(chain_sequences)
+            return reward, full_sequence, reward_dict
         
         # Multi-sequence evaluation
         poses, sequences = run_mpnn_and_thread(pdb_path, self.design_chain, self.mpnn_config, self.n_sequences)
@@ -117,7 +138,7 @@ class MultiSequenceEvaluator:
         for i, (pose, seq) in enumerate(zip(poses, sequences)):
             pack_and_minimize_pose(pose)
             # Call the original single-sequence function
-            reward, _, reward_dict = self.single_sequence_evaluator(pose, seq, self.design_chain, **self.kwargs)
+            reward, _, reward_dict = self.single_sequence_evaluator(pose, seq, design_chain=self.design_chain, **self.kwargs)
             rewards.append(reward)
             reward_dicts.append(reward_dict)
         
@@ -156,10 +177,32 @@ class MultiSequenceEvaluator:
         final_pdb_path = save_pose(best_pose, pdb_path)
         best_reward_dict['pdb_path'] = final_pdb_path
         
-        print(f"Final aggregated reward ({self.aggregation_mode}): {final_reward:.3f}")
-        print(f"Best sequence: {sequences[best_idx]}")
+        # Return the full pose sequence with chains separated by '/'
+        chain_sequences = []
+        pdb_info = best_pose.pdb_info()
+        current_chain = None
+        current_seq = []
         
-        return final_reward, sequences[best_idx], best_reward_dict
+        for i in range(1, best_pose.total_residue() + 1):
+            chain = pdb_info.chain(i)
+            if current_chain is None:
+                current_chain = chain
+            elif chain != current_chain:
+                chain_sequences.append(''.join(current_seq))
+                current_seq = []
+                current_chain = chain
+            current_seq.append(best_pose.residue(i).name1())
+        
+        # Don't forget the last chain
+        if current_seq:
+            chain_sequences.append(''.join(current_seq))
+        
+        full_sequence = '/'.join(chain_sequences)
+        
+        print(f"Final aggregated reward ({self.aggregation_mode}): {final_reward:.3f}")
+        print(f"Best designed chain sequence: {sequences[best_idx]}")
+        
+        return final_reward, full_sequence, best_reward_dict
 
 
 def save_pose(pose, pdb_path: str) -> str:

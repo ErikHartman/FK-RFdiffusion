@@ -244,9 +244,33 @@ def run_feynman_kac_design(
 def run_guided_inference(conf, original_contigs: List[str], sampled_contigs_list: List[List[str]], custom_reward_fn=None):
     """Run guided inference with Feynman-Kac sampler"""
     
-    # Save the original config (with length ranges) for reference
     if custom_reward_fn is not None:
-        configured_reward_fn = custom_reward_fn
+        # Auto-wrap custom reward function if it's not already a MultiSequenceEvaluator
+        from .feynman_kac.reward.base import MultiSequenceEvaluator
+        from functools import partial
+        
+        if not isinstance(custom_reward_fn, MultiSequenceEvaluator):
+            # Wrap the raw reward function
+            mpnn_config = {
+                'mpnn_temperature': float(conf.mpnn.mpnn_temperature),
+                'batch_size': int(conf.mpnn.batch_size),
+                'use_soluble_model': bool(conf.mpnn.use_soluble_model),
+                'suppress_print': bool(conf.mpnn.suppress_print),
+                'save_score': bool(conf.mpnn.save_score),
+                'save_probs': bool(conf.mpnn.save_probs),
+                'design_chains': str(conf.mpnn.design_chains) if conf.mpnn.design_chains else None,
+                'fixed_chains': str(conf.mpnn.fixed_chains) if conf.mpnn.fixed_chains else None,
+            }
+            
+            configured_reward_fn = MultiSequenceEvaluator(
+                single_sequence_evaluator=partial(custom_reward_fn),
+                design_chain=str(conf.reward.design_chain),
+                mpnn_config=mpnn_config,
+                n_sequences=conf.reward.n_sequences,
+                aggregation_mode=conf.reward.aggregation_mode
+            )
+        else:
+            configured_reward_fn = custom_reward_fn
     else:
         configured_reward_fn = get_reward_function(conf)
     print(OmegaConf.to_yaml(conf))
