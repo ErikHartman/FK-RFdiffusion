@@ -96,11 +96,15 @@ class MultiSequenceEvaluator:
         Evaluate multiple sequences and return aggregated results.
         """
         if self.n_sequences == 1:
-            # Single sequence evaluation - call MPNN and thread once
             poses, sequences = run_mpnn_and_thread(pdb_path, self.design_chain, self.mpnn_config, 1)
             pose, sequence = poses[0], sequences[0]
             pack_and_minimize_pose(pose)
-            return self.single_sequence_evaluator(pose, sequence, self.design_chain, **self.kwargs)
+            
+            reward, seq, reward_dict = self.single_sequence_evaluator(pose, sequence, self.design_chain, **self.kwargs)
+            refined_pdb_path = save_pose(pose, pdb_path)
+            reward_dict['pdb_path'] = refined_pdb_path
+            
+            return reward, seq, reward_dict
         
         # Multi-sequence evaluation
         poses, sequences = run_mpnn_and_thread(pdb_path, self.design_chain, self.mpnn_config, self.n_sequences)

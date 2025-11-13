@@ -28,12 +28,24 @@ If you already cloned without `--recursive`, initialize submodules:
 git submodule update --init --recursive
 ```
 
-### 2. Set up RFdiffusion Environment
+### 2. Apply the RFdiffusion patch
+
+FK-RFdiffusion requires a small patch to RFdiffusion to enable runtime control of diffusion timesteps:
+
+```bash
+cd externals/RFdiffusion
+git apply ../../patches/rfdiffusion_timestep_override.patch
+cd ../..
+```
+
+This patch preserves your runtime `diffuser.T` configuration when loading model checkpoints, allowing you to control the number of diffusion steps (e.g., `num_diffusion_timesteps=80`) without retraining the model.
+
+### 3. Set up RFdiffusion Environment
 
 First, follow the [RFdiffusion installation instructions](https://github.com/RosettaCommons/RFdiffusion) to set up the base environment. This includes creating a conda environment and setting up weights. If you can call the standard RFdiffusion `run_inference.py` script, you can continue. 
 
 
-### 3. Install additional dependencies for FK-RFdiffusion
+### 4. Install additional dependencies for FK-RFdiffusion
 
 We have extra dependencies for the reward functions. PyDSSP is used for secondary structure computation and biopython for sequence-based features.
 
@@ -41,7 +53,7 @@ We have extra dependencies for the reward functions. PyDSSP is used for secondar
 pip install pydssp biopython
 ```
 
-### 3b. Install PyRosetta
+### 5. Install PyRosetta
 
 Install pyrosetta according to the [documentation](https://pypi.org/project/pyrosetta-installer/).
 

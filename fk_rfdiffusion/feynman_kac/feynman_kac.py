@@ -18,7 +18,8 @@ class FeynmanKacSampler:
     """
     Feynman-Kac particle filtering for guided diffusion.
 
-    Diffusion goes from t=T=50 to t=1, with guidance starting at guidance_start_timestep.
+    Diffusion goes from t=T (configurable via diffuser.T, default 50) to t=1, 
+    with guidance starting at guidance_start_timestep.
     """
     
     def __init__(self, 

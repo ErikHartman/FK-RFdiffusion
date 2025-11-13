@@ -29,6 +29,7 @@ def run_feynman_kac_design(
     n_runs: int = 1,
     resampling_frequency: int = 5,
     guidance_start_timestep: int = 50,
+    num_diffusion_timesteps: int = 50,
     save_full_trajectory: bool = False,
     max_workers: int = 1,
     potential_mode: str = "difference",
@@ -55,7 +56,10 @@ def run_feynman_kac_design(
         n_particles: Number of particles for FK sampling
         n_runs: Number of independent runs to perform (default: 1)
         resampling_frequency: How often to guide + resample particles (default: 5)
-        guidance_start_timestep: When to start applying guidance (default: 30)
+        guidance_start_timestep: When to start applying guidance (default: 50). Must be <= num_diffusion_timesteps
+        num_diffusion_timesteps: Total number of diffusion timesteps (T parameter, default: 50). 
+            Controls how many denoising steps are taken. Higher values = more gradual denoising but slower.
+            Typical values: 25-100. Must be >= guidance_start_timestep.
         save_full_trajectory: Whether to save PDB files at every timestep (default: False)
         max_workers: Maximum number of parallel workers (default: min(n_particles, 4))
         potential_mode: Potential function mode. Options:
@@ -110,6 +114,11 @@ def run_feynman_kac_design(
     ensure_pyrosetta_initialized()
     design_mode = infer_design_mode_from_contigs(contigs)
     print(f"Design mode: {design_mode}")
+    
+    # Validate timestep parameters
+    if guidance_start_timestep > num_diffusion_timesteps:
+        raise ValueError(f"guidance_start_timestep ({guidance_start_timestep}) cannot be greater than "
+                        f"num_diffusion_timesteps ({num_diffusion_timesteps})")
     
     # Validate that only one reward method is specified
     if custom_reward_fn is not None and reward_function is not None:
@@ -195,6 +204,7 @@ def run_feynman_kac_design(
     overrides['feynman_kac']['parallel_evaluation'] = True if max_workers > 1 else False
     overrides['feynman_kac']['max_workers'] = max_workers
     overrides['feynman_kac']['potential_mode'] = potential_mode
+    overrides['diffuser']['T'] = num_diffusion_timesteps
         
     if reward_function is not None:
         overrides['reward']['function'] = reward_function
@@ -271,6 +281,7 @@ def run_guided_inference(conf, original_contigs: List[str], sampled_contigs_list
             print(f"Using contigs for this run: {sampled_contigs_list[run_id - 1]}")
         
         # Create sampler with run-specific config
+        # Note: diffuser.T override is handled in the RFdiffusion model_runners.py
         sampler = iu.sampler_selector(run_conf)
         
         # Determine output prefix for this run
