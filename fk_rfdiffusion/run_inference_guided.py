@@ -11,7 +11,7 @@ from rfdiffusion.inference import utils as iu
 
 from .feynman_kac.feynman_kac import FeynmanKacSampler
 from .feynman_kac.reward import ensure_pyrosetta_initialized, get_reward_function
-from .utils import get_checkpoint_path, parse_structure_file, cleanup_temp_pdb, infer_design_mode_from_contigs, detect_length_ranges, sample_contig_lengths
+from .utils import get_checkpoint_path, parse_structure_file, cleanup_temp_pdb, infer_design_mode_from_contigs, detect_length_ranges, sample_contig_lengths, validate_symmetry_contigs
 from .config.utils import (
     load_config_with_defaults, 
     auto_detect_chain_assignments, 
@@ -29,6 +29,7 @@ def run_feynman_kac_design(
     n_runs: int = 1,
     resampling_frequency: int = 5,
     guidance_start_timestep: int = 50,
+    num_diffusion_timesteps: int = 50,
     save_full_trajectory: bool = False,
     max_workers: int = 1,
     potential_mode: str = "difference",
@@ -39,6 +40,7 @@ def run_feynman_kac_design(
     custom_reward_fn: Optional[callable] = None,
     n_sequences: int = 1,
     aggregation_mode: str = "mean",
+    symmetry: Optional[str] = None,
     **kwargs
 ) -> None:
     """
@@ -54,7 +56,10 @@ def run_feynman_kac_design(
         n_particles: Number of particles for FK sampling
         n_runs: Number of independent runs to perform (default: 1)
         resampling_frequency: How often to guide + resample particles (default: 5)
-        guidance_start_timestep: When to start applying guidance (default: 30)
+        guidance_start_timestep: When to start applying guidance (default: 50). Must be <= num_diffusion_timesteps
+        num_diffusion_timesteps: Total number of diffusion timesteps (T parameter, default: 50). 
+            Controls how many denoising steps are taken. Higher values = more gradual denoising but slower.
+            Typical values: 25-100. Must be >= guidance_start_timestep.
         save_full_trajectory: Whether to save PDB files at every timestep (default: False)
         max_workers: Maximum number of parallel workers (default: min(n_particles, 4))
         potential_mode: Potential function mode. Options:
@@ -71,6 +76,8 @@ def run_feynman_kac_design(
             Cannot be used together with reward_function.
         n_sequences: Number of sequences to generate per MPNN evaluation for better reward estimates (default: 1)
         aggregation_mode: How to aggregate multiple sequence rewards - "mean" or "max" (default: "mean")
+        symmetry: Symmetry specification for symmetric assemblies (e.g., 'C5', 'C3', 'D2', 'tetrahedral', 'icosahedral').
+            Contig length must be divisible by symmetry order. Default: None (no symmetry)
         **kwargs: Additional config overrides
         
     Examples:
@@ -100,9 +107,19 @@ def run_feynman_kac_design(
     design_mode = infer_design_mode_from_contigs(contigs)
     print(f"Design mode: {design_mode}")
     
+    # Validate timestep parameters
+    if guidance_start_timestep > num_diffusion_timesteps:
+        raise ValueError(f"guidance_start_timestep ({guidance_start_timestep}) cannot be greater than "
+                        f"num_diffusion_timesteps ({num_diffusion_timesteps})")
+    
     # Validate that only one reward method is specified
     if custom_reward_fn is not None and reward_function is not None:
         raise ValueError("Cannot specify both custom_reward_fn and reward_function. Choose one.")
+    
+    # Validate symmetry and contig compatibility
+    if symmetry is not None:
+        validate_symmetry_contigs(contigs, symmetry)
+        print(f"Symmetry: {symmetry}")
     
     conf = load_config_with_defaults()
     checkpoint_path = get_checkpoint_path(design_mode, checkpoint)
@@ -148,6 +165,9 @@ def run_feynman_kac_design(
     if hotspot_res is not None:
         overrides['ppi']['hotspot_res'] = hotspot_res
     
+    if symmetry is not None:
+        overrides['inference']['symmetry'] = symmetry
+    
     # Handle length range sampling for contigs
     has_length_ranges = detect_length_ranges(contigs) if contigs is not None else False
     if has_length_ranges:
@@ -176,9 +196,13 @@ def run_feynman_kac_design(
     overrides['feynman_kac']['parallel_evaluation'] = True if max_workers > 1 else False
     overrides['feynman_kac']['max_workers'] = max_workers
     overrides['feynman_kac']['potential_mode'] = potential_mode
+    overrides['diffuser']['T'] = num_diffusion_timesteps
         
     if reward_function is not None:
         overrides['reward']['function'] = reward_function
+    elif custom_reward_fn is not None:
+        # Document custom reward function name in config
+        overrides['reward']['function'] = f"custom:{custom_reward_fn.__name__}"
 
     # Set multi-sequence evaluation parameters
     overrides['reward']['n_sequences'] = n_sequences
@@ -212,9 +236,34 @@ def run_feynman_kac_design(
 def run_guided_inference(conf, original_contigs: List[str], sampled_contigs_list: List[List[str]], custom_reward_fn=None):
     """Run guided inference with Feynman-Kac sampler"""
     
-    # Save the original config (with length ranges) for reference
     if custom_reward_fn is not None:
-        configured_reward_fn = custom_reward_fn
+        # Auto-wrap custom reward function if it's not already a MultiSequenceEvaluator
+        from .feynman_kac.reward.base import MultiSequenceEvaluator
+        from functools import partial
+        
+        if not isinstance(custom_reward_fn, MultiSequenceEvaluator):
+            # Wrap the raw reward function
+            mpnn_config = {
+                'mpnn_temperature': float(conf.mpnn.mpnn_temperature),
+                'batch_size': int(conf.mpnn.batch_size),
+                'use_soluble_model': bool(conf.mpnn.use_soluble_model),
+                'suppress_print': bool(conf.mpnn.suppress_print),
+                'save_score': bool(conf.mpnn.save_score),
+                'save_probs': bool(conf.mpnn.save_probs),
+                'design_chains': str(conf.mpnn.design_chains) if conf.mpnn.design_chains else None,
+                'fixed_chains': str(conf.mpnn.fixed_chains) if conf.mpnn.fixed_chains else None,
+            }
+            
+            configured_reward_fn = MultiSequenceEvaluator(
+                single_sequence_evaluator=partial(custom_reward_fn),
+                design_chain=str(conf.reward.design_chain),
+                mpnn_config=mpnn_config,
+                n_sequences=conf.reward.n_sequences,
+                aggregation_mode=conf.reward.aggregation_mode,
+                is_symmetric=bool(conf.inference.symmetry is not None and conf.inference.symmetry != '')
+            )
+        else:
+            configured_reward_fn = custom_reward_fn
     else:
         configured_reward_fn = get_reward_function(conf)
     print(OmegaConf.to_yaml(conf))
@@ -252,6 +301,7 @@ def run_guided_inference(conf, original_contigs: List[str], sampled_contigs_list
             print(f"Using contigs for this run: {sampled_contigs_list[run_id - 1]}")
         
         # Create sampler with run-specific config
+        # Note: diffuser.T override is handled in the RFdiffusion model_runners.py
         sampler = iu.sampler_selector(run_conf)
         
         # Determine output prefix for this run
@@ -281,6 +331,11 @@ def run_guided_inference(conf, original_contigs: List[str], sampled_contigs_list
         run_results_df['run'] = run_id
         all_results.append(run_results_df)
         
+        # Save intermittent CSV for this run
+        intermittent_csv_path = output_path / f"results_run_{run_id}.csv"
+        run_results_df.to_csv(intermittent_csv_path, index=False)
+        print(f"Saved intermittent results to {intermittent_csv_path}")
+        
         print(f"Completed run {run_id}/{n_runs}")
     
     # Concatenate all results and save
@@ -292,4 +347,12 @@ def run_guided_inference(conf, original_contigs: List[str], sampled_contigs_list
     print(f"\nSaved combined results from {n_runs} runs to {results_file}")
     print(f"Total particles: {len(combined_results)}")
     print(f"Particles per run: {len(combined_results) // n_runs}")
+    
+    # Delete intermittent run files now that we have the combined results
+    intermittent_files = sorted(output_path.glob("results_run_*.csv"))
+    if intermittent_files:
+        print(f"\nCleaning up {len(intermittent_files)} intermittent CSV files...")
+        for intermittent_file in intermittent_files:
+            intermittent_file.unlink()
+            print(f"Deleted {intermittent_file.name}")
 

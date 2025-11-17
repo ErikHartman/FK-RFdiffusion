@@ -1,0 +1,29 @@
+diff --git a/rfdiffusion/inference/model_runners.py b/rfdiffusion/inference/model_runners.py
+index f47d0e9..8c4db39 100644
+--- a/rfdiffusion/inference/model_runners.py
++++ b/rfdiffusion/inference/model_runners.py
+@@ -202,6 +202,12 @@ class Sampler:
+         overrides = []
+         if HydraConfig.initialized():
+             overrides = HydraConfig.get().overrides.task
++        
++        # IMPORTANT: Save diffuser.T BEFORE loading checkpoint config
++        # The checkpoint contains T from training time, but we want to allow runtime override
++        # This must happen before diffuser initialization (which allocates arrays based on T)
++        saved_diffuser_T = self._conf.diffuser.T if 'T' in self._conf.diffuser else None
++        
+         print("Assembling -model, -diffuser and -preprocess configs from checkpoint")
+ 
+         for cat in ['model','diffuser','preprocess']:
+@@ -212,6 +218,11 @@ class Sampler:
+                 except:
+                     pass
+         
++        # Restore diffuser.T if it was explicitly set in runtime config
++        if saved_diffuser_T is not None and saved_diffuser_T != self._conf.diffuser.T:
++            print(f"OVERRIDING checkpoint diffuser.T: {saved_diffuser_T} (checkpoint had {self._conf.diffuser.T})")
++            self._conf.diffuser.T = saved_diffuser_T
++        
+         # add overrides back in again
+         for override in overrides:
+             if override.split(".")[0] in ['model','diffuser','preprocess']:

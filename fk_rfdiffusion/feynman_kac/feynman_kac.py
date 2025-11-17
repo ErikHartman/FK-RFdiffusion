@@ -18,7 +18,8 @@ class FeynmanKacSampler:
     """
     Feynman-Kac particle filtering for guided diffusion.
 
-    Diffusion goes from t=T=50 to t=1, with guidance starting at guidance_start_timestep.
+    Diffusion goes from t=T (configurable via diffuser.T, default 50) to t=1, 
+    with guidance starting at guidance_start_timestep.
     """
     
     def __init__(self, 
@@ -288,7 +289,8 @@ class FeynmanKacSampler:
                               t > final_step)
             
             # Save x_t trajectories BEFORE stepping (save current state at timestep t)
-            if (self.save_full_trajectory or is_guidance_step) and t > final_step:
+            # Only save non-px0 particles if save_full_trajectory is enabled
+            if self.save_full_trajectory and t > final_step:
                 for i in range(len(particles_x)):
                     self.save_particle_structure(
                         particles_x[i], particles_seq[i], t, particle_unique_names[i]
