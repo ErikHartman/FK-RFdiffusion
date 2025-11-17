@@ -124,7 +124,19 @@ If you use this code, please cite:
 
 - The RFdiffusion paper
 - The ProteinMPNN paper
-- This preprint
+- This preprint:
+
+```bib
+@misc{RFD-FK,
+  doi = {10.48550/ARXIV.2511.09216},
+  url = {https://arxiv.org/abs/2511.09216},
+  author = {Hartman,  Erik and Wallin,  Jonas and Malmström,  Johan and Olsson,  Jimmy},
+  title = {Controllable protein design through Feynman-Kac steering},
+  publisher = {arXiv},
+  year = {2025},
+  copyright = {arXiv.org perpetual,  non-exclusive license}
+}
+````
 
 ## License
 
