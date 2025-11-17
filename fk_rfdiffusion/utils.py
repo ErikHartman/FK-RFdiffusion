@@ -141,13 +141,9 @@ def get_symmetry_order(symmetry: str) -> int:
         if symmetry[1:].isdigit():
             return int(symmetry[1:]) * 2  # Dihedral has 2n subunits
         raise ValueError(f"Invalid dihedral symmetry format: {symmetry}")
-    elif symmetry_lower in ['t3', 'tetrahedral']:
+    elif symmetry_lower in ['t3']:
         return 4
-    elif symmetry_lower == 'octahedral':
-        return 24
-    elif symmetry_lower == 'icosahedral':
-        return 60
-    
+
     else:
         raise ValueError(f"Unrecognized symmetry: {symmetry}")
 

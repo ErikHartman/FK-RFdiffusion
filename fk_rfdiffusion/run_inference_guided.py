@@ -95,14 +95,6 @@ def run_feynman_kac_design(
         ...     n_runs=10
         ... )
         
-        Symmetric assembly design (C5 pentamer):
-        >>> run_feynman_kac_design(
-        ...     contigs=["100"],
-        ...     symmetry="C5",
-        ...     reward_function="some_reward",
-        ...     n_runs=5
-        ... )
-        
         Unconditional design with length range:
         >>> run_feynman_kac_design(
         ...     contigs=["50-75"],
