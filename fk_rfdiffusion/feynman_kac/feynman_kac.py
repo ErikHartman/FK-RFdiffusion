@@ -289,7 +289,8 @@ class FeynmanKacSampler:
                               t > final_step)
             
             # Save x_t trajectories BEFORE stepping (save current state at timestep t)
-            if (self.save_full_trajectory or is_guidance_step) and t > final_step:
+            # Only save non-px0 particles if save_full_trajectory is enabled
+            if self.save_full_trajectory and t > final_step:
                 for i in range(len(particles_x)):
                     self.save_particle_structure(
                         particles_x[i], particles_seq[i], t, particle_unique_names[i]

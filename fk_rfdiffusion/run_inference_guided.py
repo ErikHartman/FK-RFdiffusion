@@ -339,6 +339,11 @@ def run_guided_inference(conf, original_contigs: List[str], sampled_contigs_list
         run_results_df['run'] = run_id
         all_results.append(run_results_df)
         
+        # Save intermittent CSV for this run
+        intermittent_csv_path = output_path / f"results_run_{run_id}.csv"
+        run_results_df.to_csv(intermittent_csv_path, index=False)
+        print(f"Saved intermittent results to {intermittent_csv_path}")
+        
         print(f"Completed run {run_id}/{n_runs}")
     
     # Concatenate all results and save
@@ -350,4 +355,12 @@ def run_guided_inference(conf, original_contigs: List[str], sampled_contigs_list
     print(f"\nSaved combined results from {n_runs} runs to {results_file}")
     print(f"Total particles: {len(combined_results)}")
     print(f"Particles per run: {len(combined_results) // n_runs}")
+    
+    # Delete intermittent run files now that we have the combined results
+    intermittent_files = sorted(output_path.glob("results_run_*.csv"))
+    if intermittent_files:
+        print(f"\nCleaning up {len(intermittent_files)} intermittent CSV files...")
+        for intermittent_file in intermittent_files:
+            intermittent_file.unlink()
+            print(f"Deleted {intermittent_file.name}")
 
