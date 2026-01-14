@@ -49,6 +49,7 @@ class FeynmanKacSampler:
     
         
         self.particle_reward_history = {}  # {particle_name: [reward_t50, reward_t45, ...]}
+        self.particle_prev_pred = {}  # {particle_name: torch.Tensor} - stores prev_pred for SelfConditioning
 
         self.metadata_records = []  # List of dicts for CSV output
         self.particle_counter = 0  # Global counter for unique particle names
@@ -71,6 +72,11 @@ class FeynmanKacSampler:
         max_retries = 5
         retry_count = 0
         original_x_t = x_t.clone()  # Keep original coordinates for jittering
+        
+        # Restore particle-specific prev_pred state if it exists
+        # At t=T (first timestep), particles won't have prev_pred yet and that's fine
+        if particle_name in self.particle_prev_pred:
+            self.base_sampler.prev_pred = self.particle_prev_pred[particle_name].clone()
         
         while retry_count < max_retries:
             try:
@@ -97,6 +103,10 @@ class FeynmanKacSampler:
                 new_particles_x.append(x_next.clone())
                 new_particles_seq.append(seq_next.clone())
                 all_px0.append(px0.clone())
+                
+                # Capture the updated prev_pred for this particle
+                # This happens after every step, including t=T, so prev_pred will be available for t=T-1
+                self.particle_prev_pred[particle_name] = self.base_sampler.prev_pred.clone()
                 
                 if retry_count > 0:
                     print(f"Particle {particle_idx} ({particle_name}) succeeded after {retry_count + 1} attempts at t={t}")
@@ -361,6 +371,10 @@ class FeynmanKacSampler:
                     # Copy reward history from parent to child INCLUDING current reward
                     parent_name = particle_unique_names[selected_idx]
                     self.particle_reward_history[new_name] = self.particle_reward_history[parent_name].copy()
+                    
+                    # Copy parent's prev_pred state to child for SelfConditioning
+                    if parent_name in self.particle_prev_pred:
+                        self.particle_prev_pred[new_name] = self.particle_prev_pred[parent_name].clone()
 
                 particles_x = resampled_particles_x
                 particles_seq = resampled_particles_seq
