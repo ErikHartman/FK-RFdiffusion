@@ -36,5 +36,5 @@ Repository = "https://github.com/ErikHartman/fk-rfdiffusion"
 
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["fk_rfdiffusion*"]
+include = ["fk_rfdiffusion*", "model_agnostic_fk*"]
 exclude = ["tests*", "examples*"]

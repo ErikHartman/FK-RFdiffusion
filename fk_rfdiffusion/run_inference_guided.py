@@ -249,6 +249,7 @@ def run_guided_inference(conf, original_contigs: List[str], sampled_contigs_list
                 'mpnn_temperature': float(conf.mpnn.mpnn_temperature),
                 'batch_size': int(conf.mpnn.batch_size),
                 'use_soluble_model': bool(conf.mpnn.use_soluble_model),
+                'ca_only': bool(getattr(conf.mpnn, 'ca_only', False)),
                 'suppress_print': bool(conf.mpnn.suppress_print),
                 'save_score': bool(conf.mpnn.save_score),
                 'save_probs': bool(conf.mpnn.save_probs),
