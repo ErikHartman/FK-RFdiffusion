@@ -1,8 +1,6 @@
 # Model-agnostic FK
 
-This directory contains a standalone Feynman--Kac (FK) particle-filter loop.
-It does not import RFdiffusion or make assumptions about tensors, coordinate
-formats, or a model's self-conditioning implementation.
+The Feynman-Kac (FK) method is model agnostic, however, the main implementation was done with RFdiffusion. However, this repository contains a standalone adapter module that can be used to implement FK for other models. You can therefore write your own adapter and run FK using your model.
 
 The adapter contract has five operations:
 
@@ -13,6 +11,4 @@ The adapter contract has five operations:
 4. expose the first and last timesteps; and
 5. serialize a particle to the artifact accepted by the reward function.
 
-Particles should include all per-particle model cache. This is essential for
-self-conditioning or recurrent models: resampling must copy that state with the
-particle lineage instead of leaving it on a shared model object.
+This was tested for [Genie 2](https://github.com/aqlaboratory/genie2) and its adapter is present in /adapters.
