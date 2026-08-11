@@ -1,5 +1,6 @@
 import sys
 import time
+from contextlib import nullcontext
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional, List
@@ -43,6 +44,7 @@ def run_feynman_kac_design(
     n_sequences: int = 1,
     aggregation_mode: str = "mean",
     symmetry: Optional[str] = None,
+    profiler=None,
     **kwargs
 ) -> None:
     """
@@ -229,13 +231,15 @@ def run_feynman_kac_design(
     conf = auto_detect_chain_assignments(conf, design_mode)
     
     validate_config(conf)
-    run_guided_inference(conf, contigs, sampled_contigs_list, custom_reward_fn)
+    run_guided_inference(
+        conf, contigs, sampled_contigs_list, custom_reward_fn, profiler=profiler
+    )
 
     if temp_pdb_path and original_target_structure:
         cleanup_temp_pdb(temp_pdb_path, original_target_structure)
 
 
-def run_guided_inference(conf, original_contigs: List[str], sampled_contigs_list: List[List[str]], custom_reward_fn=None):
+def run_guided_inference(conf, original_contigs: List[str], sampled_contigs_list: List[List[str]], custom_reward_fn=None, profiler=None):
     """Run guided inference with Feynman-Kac sampler"""
     
     if custom_reward_fn is not None:
@@ -262,12 +266,13 @@ def run_guided_inference(conf, original_contigs: List[str], sampled_contigs_list
                 mpnn_config=mpnn_config,
                 n_sequences=conf.reward.n_sequences,
                 aggregation_mode=conf.reward.aggregation_mode,
-                is_symmetric=bool(conf.inference.symmetry is not None and conf.inference.symmetry != '')
+                is_symmetric=bool(conf.inference.symmetry is not None and conf.inference.symmetry != ''),
+                profiler=profiler,
             )
         else:
             configured_reward_fn = custom_reward_fn
     else:
-        configured_reward_fn = get_reward_function(conf)
+        configured_reward_fn = get_reward_function(conf, profiler=profiler)
     print(OmegaConf.to_yaml(conf))
     output_prefix = conf.inference.output_prefix
     output_dir = Path(output_prefix)
@@ -310,7 +315,8 @@ def run_guided_inference(conf, original_contigs: List[str], sampled_contigs_list
 
         # Create sampler with run-specific config
         # Note: diffuser.T override is handled in the RFdiffusion model_runners.py
-        sampler = iu.sampler_selector(run_conf)
+        with (profiler.measure("sampler_construction") if profiler else nullcontext()):
+            sampler = iu.sampler_selector(run_conf)
         
         # Determine output prefix for this run
         if n_runs > 1:
@@ -329,7 +335,8 @@ def run_guided_inference(conf, original_contigs: List[str], sampled_contigs_list
             parallel_evaluation=conf.feynman_kac.parallel_evaluation,
             max_workers=conf.feynman_kac.max_workers,
             tau=conf.feynman_kac.tau,
-            potential_mode=conf.feynman_kac.potential_mode
+            potential_mode=conf.feynman_kac.potential_mode,
+            profiler=profiler,
         )
         
         # Run the FK diffusion and get results dataframe

@@ -3,6 +3,7 @@ import shutil
 import sys
 import subprocess
 import tempfile
+from contextlib import nullcontext
 from pathlib import Path
 from typing import Tuple, List
 import numpy as np
@@ -16,6 +17,10 @@ from pyrosetta.rosetta.core.pack.task import TaskFactory
 
 _pyrosetta_initialized = False
 
+
+def _measure(profiler, component: str):
+    return profiler.measure(component) if profiler is not None else nullcontext()
+
 def ensure_pyrosetta_initialized():
     """Initialize PyRosetta once per process to avoid multiprocessing conflicts"""
     global _pyrosetta_initialized
@@ -24,7 +29,7 @@ def ensure_pyrosetta_initialized():
         init(init_flags)
         _pyrosetta_initialized = True
 
-def run_mpnn_and_thread(pdb_path: str, design_chain: str, mpnn_config: dict = None, n_sequences: int = 1, is_symmetric: bool = False) -> Tuple[List[object], List[str]]:
+def run_mpnn_and_thread(pdb_path: str, design_chain: str, mpnn_config: dict = None, n_sequences: int = 1, is_symmetric: bool = False, profiler=None) -> Tuple[List[object], List[str]]:
     """
     Run ProteinMPNN and thread multiple sequences.
     Returns lists of (threaded_poses, designed_sequences) for multiple evaluations.
@@ -34,16 +39,18 @@ def run_mpnn_and_thread(pdb_path: str, design_chain: str, mpnn_config: dict = No
     """
     pdb_path = Path(pdb_path).resolve()
     output_dir = Path(tempfile.mkdtemp(prefix="mpnn_"))
-    designed_sequences = _run_proteinmpnn(
-        pdb_path, design_chain, output_dir, mpnn_config or {}, n_sequences
-    )
+    with _measure(profiler, "proteinmpnn"):
+        designed_sequences = _run_proteinmpnn(
+            pdb_path, design_chain, output_dir, mpnn_config or {}, n_sequences
+        )
     
     threaded_poses = []
     
     for designed_seq in designed_sequences:
-        threaded_pose = _thread_sequence_onto_structure(
-            pdb_path, designed_seq, design_chain, output_dir, is_symmetric
-        )
+        with _measure(profiler, "sequence_threading"):
+            threaded_pose = _thread_sequence_onto_structure(
+                pdb_path, designed_seq, design_chain, output_dir, is_symmetric
+            )
         threaded_poses.append(threaded_pose)
     
     shutil.rmtree(output_dir)
@@ -86,26 +93,40 @@ class MultiSequenceEvaluator:
     """
     
     def __init__(self, single_sequence_evaluator, design_chain: str, mpnn_config: dict, 
-                 n_sequences: int = 1, aggregation_mode: str = "mean", is_symmetric: bool = False, **kwargs):
+                 n_sequences: int = 1, aggregation_mode: str = "mean", is_symmetric: bool = False,
+                 profiler=None, **kwargs):
         self.single_sequence_evaluator = single_sequence_evaluator
         self.design_chain = design_chain
         self.mpnn_config = mpnn_config or {}
         self.n_sequences = n_sequences
         self.aggregation_mode = aggregation_mode
         self.is_symmetric = is_symmetric
+        self.profiler = profiler
         self.kwargs = kwargs
     
     def __call__(self, pdb_path: str) -> Tuple[float, str, dict]:
         """
         Evaluate multiple sequences and return aggregated results.
         """
+        with _measure(self.profiler, "reward_evaluation"):
+            return self._evaluate(pdb_path)
+
+    def _evaluate(self, pdb_path: str) -> Tuple[float, str, dict]:
         if self.n_sequences == 1:
-            poses, sequences = run_mpnn_and_thread(pdb_path, self.design_chain, self.mpnn_config, 1, self.is_symmetric)
+            poses, sequences = run_mpnn_and_thread(
+                pdb_path, self.design_chain, self.mpnn_config, 1, self.is_symmetric,
+                profiler=self.profiler,
+            )
             pose, sequence = poses[0], sequences[0]
-            pack_and_minimize_pose(pose)
+            with _measure(self.profiler, "pyrosetta_pack_minimize"):
+                pack_and_minimize_pose(pose)
             
-            reward, _, reward_dict = self.single_sequence_evaluator(pose, sequence, design_chain=self.design_chain, **self.kwargs)
-            refined_pdb_path = save_pose(pose, pdb_path)
+            with _measure(self.profiler, "reward_score"):
+                reward, _, reward_dict = self.single_sequence_evaluator(
+                    pose, sequence, design_chain=self.design_chain, **self.kwargs
+                )
+            with _measure(self.profiler, "refined_pdb_write"):
+                refined_pdb_path = save_pose(pose, pdb_path)
             reward_dict['pdb_path'] = refined_pdb_path
             
             # Extract and return sequences
@@ -113,7 +134,10 @@ class MultiSequenceEvaluator:
             return reward, output_sequence, reward_dict
         
         # Multi-sequence evaluation
-        poses, sequences = run_mpnn_and_thread(pdb_path, self.design_chain, self.mpnn_config, self.n_sequences, self.is_symmetric)
+        poses, sequences = run_mpnn_and_thread(
+            pdb_path, self.design_chain, self.mpnn_config, self.n_sequences,
+            self.is_symmetric, profiler=self.profiler,
+        )
         
         rewards = []
         reward_dicts = []
@@ -121,9 +145,13 @@ class MultiSequenceEvaluator:
         print(f"Evaluating {len(sequences)} MPNN sequences with aggregation_mode='{self.aggregation_mode}'")
         
         for i, (pose, seq) in enumerate(zip(poses, sequences)):
-            pack_and_minimize_pose(pose)
+            with _measure(self.profiler, "pyrosetta_pack_minimize"):
+                pack_and_minimize_pose(pose)
             # Call the original single-sequence function
-            reward, _, reward_dict = self.single_sequence_evaluator(pose, seq, design_chain=self.design_chain, **self.kwargs)
+            with _measure(self.profiler, "reward_score"):
+                reward, _, reward_dict = self.single_sequence_evaluator(
+                    pose, seq, design_chain=self.design_chain, **self.kwargs
+                )
             rewards.append(reward)
             reward_dicts.append(reward_dict)
         
@@ -159,7 +187,8 @@ class MultiSequenceEvaluator:
         
         # Save the best pose (highest reward)
         best_pose = poses[best_idx]
-        final_pdb_path = save_pose(best_pose, pdb_path)
+        with _measure(self.profiler, "refined_pdb_write"):
+            final_pdb_path = save_pose(best_pose, pdb_path)
         best_reward_dict['pdb_path'] = final_pdb_path
         
         # Extract and return sequences
@@ -297,23 +326,34 @@ def _run_proteinmpnn(
 
     with open(seq_files[0], 'r') as f:
         lines = f.readlines()
-        sequences = []
-        for i, line in enumerate(lines):
-            if line.startswith('>'):
-                if i + 1 < len(lines):
-                    sequence = lines[i + 1].strip()
-                    sequences.append(sequence)
-        
-        # Filter out invalid sequences and return all valid ones
-        valid_sequences = []
-        for seq in sequences:
-            if 'X' not in seq and len(seq) > 0:
-                valid_sequences.append(seq)
-        
-        if not valid_sequences:
-            raise RuntimeError("No valid sequences generated by ProteinMPNN (all contain 'X' or are empty)")
-        
-        return valid_sequences
+
+    # ProteinMPNN's first FASTA record is the input/native sequence. It is a
+    # reference, not one of the generated designs. The generated records have
+    # >T=... headers, so parse only those. In particular, an all-glycine
+    # RFdiffusion input sequence is valid amino-acid text and must not silently
+    # become an extra candidate in the unguided arm.
+    generated_sequences = []
+    for i, line in enumerate(lines):
+        if not line.startswith('>T='):
+            continue
+        if i + 1 >= len(lines):
+            raise RuntimeError(
+                f"ProteinMPNN FASTA record in {seq_files[0]} has no sequence line"
+            )
+        sequence = lines[i + 1].strip()
+        if 'X' in sequence or not sequence:
+            raise RuntimeError(
+                f"ProteinMPNN produced an invalid generated sequence in {seq_files[0]}"
+            )
+        generated_sequences.append(sequence)
+
+    if len(generated_sequences) != n_sequences:
+        raise RuntimeError(
+            "ProteinMPNN generated an unexpected number of sequences: "
+            f"expected {n_sequences}, found {len(generated_sequences)} in {seq_files[0]}"
+        )
+
+    return generated_sequences
 
 def _thread_sequence_onto_structure(
     pdb_path: Path,
@@ -412,4 +452,3 @@ def _clean_rfdiffusion_pdb(pdb_path: Path, output_path: Path) -> Path:
                 line = line[:17] + 'ALA' + line[20:]
             f_out.write(line)
     return output_path
-
