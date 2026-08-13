@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Tuple, List
 import numpy as np
 
-from pyrosetta import init, pose_from_pdb
+from pyrosetta import init, pose_from_pdb, pose_from_sequence
 import pyrosetta.rosetta as rosetta
 from pyrosetta.rosetta.protocols.minimization_packing import MinMover, PackRotamersMover
 from pyrosetta.rosetta.core.kinematics import MoveMap
@@ -286,6 +286,9 @@ def _run_proteinmpnn(
     
     if mpnn_use_soluble:
         cmd.append("--use_soluble_model")
+
+    if mpnn_config.get("ca_only", False):
+        cmd.append("--ca_only")
         
     if mpnn_save_score:
         cmd.append("--save_score")
@@ -378,7 +381,7 @@ def _thread_sequence_onto_structure(
     cleaned_pdb = output_dir / "cleaned_structure.pdb"
     _clean_rfdiffusion_pdb(pdb_path, cleaned_pdb)
     
-    pose = pose_from_pdb(str(cleaned_pdb))
+    pose = _pose_from_ca_only_pdb(cleaned_pdb) or pose_from_pdb(str(cleaned_pdb))
     pdb_info = pose.pdb_info()
     
     # Get all unique chains in the structure (sorted alphabetically)
@@ -443,6 +446,50 @@ def _thread_single_chain(pose, chain: str, sequence: str, chain_to_indices: dict
             rsd_set.name_map(name3)
         )
         pose.replace_residue(resi, new_res, True)
+
+
+def _pose_from_ca_only_pdb(pdb_path: Path):
+    """Build a full-atom pose when a generative model emitted only C-alpha atoms.
+
+    The existing reward still owns sequence threading, packing, minimization,
+    and scoring.  This conversion is deliberately used only when every protein
+    atom in the input is a CA atom; normal RFdiffusion PDBs continue through
+    ``pose_from_pdb`` unchanged.
+    """
+    ca_records = []
+    has_protein_atom = False
+    with open(pdb_path) as pdb_file:
+        for line in pdb_file:
+            if not line.startswith(("ATOM", "HETATM")):
+                continue
+            has_protein_atom = True
+            if line[12:16].strip() != "CA":
+                return None
+            ca_records.append(
+                (
+                    line[21].strip() or "A",
+                    int(line[22:26]),
+                    float(line[30:38]),
+                    float(line[38:46]),
+                    float(line[46:54]),
+                )
+            )
+
+    if not has_protein_atom or not ca_records:
+        return None
+    chains = {chain for chain, *_ in ca_records}
+    if len(chains) != 1:
+        raise ValueError("CA-only reward inputs currently require exactly one chain")
+
+    chain = ca_records[0][0]
+    pose = pose_from_sequence("A" * len(ca_records))
+    pdb_info = pose.pdb_info()
+    for index, (_, residue_number, x, y, z) in enumerate(ca_records, start=1):
+        pdb_info.chain(index, chain)
+        pdb_info.number(index, residue_number)
+        ca_atom = rosetta.core.id.AtomID(pose.residue(index).atom_index("CA"), index)
+        pose.set_xyz(ca_atom, rosetta.numeric.xyzVector_double_t(x, y, z))
+    return pose
 
 def _clean_rfdiffusion_pdb(pdb_path: Path, output_path: Path) -> Path:
     """Clean RFdiffusion PDB by replacing MAS with ALA"""

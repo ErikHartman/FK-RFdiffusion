@@ -1,4 +1,5 @@
 # FK-RFdiffusion
+
 Feynman-Kac guided protein design using RFdiffusion. This package implements particle filtering to optimize design objectives during the diffusion process.
 
 > **Disclaimer:**  We are currently working on making FK-RFdiffusion easily accessible through improved modifiability, documentation, package-managing and Colab notebooks. For now, follow the instructions below to install FK-RFdiffusion locally by cloning the repo.
@@ -42,8 +43,7 @@ This patch preserves your runtime `diffuser.T` configuration when loading model 
 
 ### 3. Set up RFdiffusion Environment
 
-First, follow the [RFdiffusion installation instructions](https://github.com/RosettaCommons/RFdiffusion) to set up the base environment. This includes creating a conda environment and setting up weights. If you can call the standard RFdiffusion `run_inference.py` script, you can continue. 
-
+First, follow the [RFdiffusion installation instructions](https://github.com/RosettaCommons/RFdiffusion) to set up the base environment. This includes creating a conda environment and setting up weights. If you can call the standard RFdiffusion `run_inference.py` script, you can continue.
 
 ### 4. Install additional dependencies for FK-RFdiffusion
 
@@ -116,7 +116,9 @@ See `fk_rfdiffusion/feynman_kac/reward/configs/presets.yaml` for full configurat
 
 ## Advanced Usage
 
+### Adapters
 
+Since FK is a model-agnostic method, it can techniically be applied to any model, but our main implementation implements it for RFdiffusion specifically. However, we do also have a model_agnostic_fk subdir that allows you to write an adapter for your model, making it truly model agnostic.
 
 ## Citation
 
@@ -136,7 +138,7 @@ If you use this code, please cite:
   year = {2025},
   copyright = {arXiv.org perpetual,  non-exclusive license}
 }
-````
+```
 
 ## License
 
