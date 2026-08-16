@@ -6,7 +6,7 @@ from .secondary_structure import secondary_structure_reward
 from .sequence import charge_reward
 from .base import MultiSequenceEvaluator
 
-def get_reward_function(conf: DictConfig):
+def get_reward_function(conf: DictConfig, profiler=None):
     """
     Create a reward function from config. Returns a partial function that's picklable
     for multiprocessing by converting all config objects to primitive types.
@@ -22,6 +22,7 @@ def get_reward_function(conf: DictConfig):
         'mpnn_temperature': float(conf.mpnn.mpnn_temperature),
         'batch_size': int(conf.mpnn.batch_size),
         'use_soluble_model': bool(conf.mpnn.use_soluble_model),
+        'ca_only': bool(getattr(conf.mpnn, 'ca_only', False)),
         'suppress_print': bool(conf.mpnn.suppress_print),
         'save_score': bool(conf.mpnn.save_score),
         'save_probs': bool(conf.mpnn.save_probs),
@@ -69,7 +70,8 @@ def get_reward_function(conf: DictConfig):
         mpnn_config=mpnn_config,
         n_sequences=n_sequences,
         aggregation_mode=aggregation_mode,
-        is_symmetric=bool(conf.inference.symmetry is not None and conf.inference.symmetry != '')
+        is_symmetric=bool(conf.inference.symmetry is not None and conf.inference.symmetry != ''),
+        profiler=profiler,
     )
 
     if conf.feynman_kac.tau is None:

@@ -5,3 +5,7 @@
 [submodule "externals/ProteinMPNN"]
 	path = externals/ProteinMPNN
 	url = https://github.com/dauparas/ProteinMPNN
+
+[submodule "model_agnostic_fk/externals/Genie2"]
+	path = model_agnostic_fk/externals/Genie2
+	url = https://github.com/aqlaboratory/genie2.git

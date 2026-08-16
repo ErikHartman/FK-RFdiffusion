@@ -5,6 +5,7 @@ import numpy as np
 import torch
 import datetime
 import pandas as pd
+from contextlib import nullcontext
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from rfdiffusion.util import writepdb
 
@@ -33,7 +34,8 @@ class FeynmanKacSampler:
                  parallel_evaluation: bool = True,
                  max_workers: int = None,
                  tau: float = 10.0,
-                 potential_mode: str = "immediate"):
+                 potential_mode: str = "immediate",
+                 profiler=None):
 
         self.base_sampler = base_sampler
         self.n_particles = n_particles
@@ -46,6 +48,7 @@ class FeynmanKacSampler:
         self.max_workers = max_workers or min(n_particles, 4)
         self.tau = tau
         self.potential_mode = potential_mode
+        self.profiler = profiler
     
         
         self.particle_reward_history = {}  # {particle_name: [reward_t50, reward_t45, ...]}
@@ -59,6 +62,9 @@ class FeynmanKacSampler:
         name = f"p{self.particle_counter:04d}"
         self.particle_counter += 1
         return name
+
+    def _measure(self, component: str):
+        return self.profiler.measure(component) if self.profiler else nullcontext()
 
     def take_step(self, x_t, seq_t, t: int, final_step: int, particle_idx: int, particle_name: str,  new_particles_x: List, 
                   new_particles_seq: List, all_px0: List) -> bool:
@@ -90,9 +96,10 @@ class FeynmanKacSampler:
                 else:
                     current_x_t = x_t
                 
-                px0, x_next, seq_next, _ = self.base_sampler.sample_step( 
-                    t=t, x_t=current_x_t, seq_init=seq_t, final_step=final_step
-                ) # Default behavior with 0 retries
+                with self._measure("diffusion_step"):
+                    px0, x_next, seq_next, _ = self.base_sampler.sample_step(
+                        t=t, x_t=current_x_t, seq_init=seq_t, final_step=final_step
+                    ) # Default behavior with 0 retries
                 
                 # Check for NaNs in backbone atoms (N, CA, C - first 3 atoms)
                 if torch.isnan(x_next[:, :3]).any() or torch.isnan(px0[:, :3]).any():
@@ -160,6 +167,14 @@ class FeynmanKacSampler:
         return rewards, sequences, reward_dicts
     
     def select_particles(self, current_rewards: List[float], particle_names: List[str], sequences: List[str], 
+                        current_timestep: int = None, n_particles: int = None) -> Tuple[np.ndarray, np.ndarray]:
+        with self._measure("particle_selection"):
+            return self._select_particles(
+                current_rewards, particle_names, sequences, current_timestep,
+                n_particles,
+            )
+
+    def _select_particles(self, current_rewards: List[float], particle_names: List[str], sequences: List[str], 
                         current_timestep: int = None, n_particles: int = None) -> Tuple[np.ndarray, np.ndarray]:
         """
         Compute potential values and select particles based on them.
@@ -284,7 +299,8 @@ class FeynmanKacSampler:
         
         # Initialize N particles
         for i in range(self.n_particles):
-            x_init, seq_init = self.base_sampler.sample_init()
+            with self._measure("particle_initialization"):
+                x_init, seq_init = self.base_sampler.sample_init()
             particles_x.append(x_init.clone())
             particles_seq.append(seq_init.clone())
             particle_unique_names.append(self.generate_unique_particle_name())
@@ -422,6 +438,10 @@ class FeynmanKacSampler:
         return df
     
     def save_particle_structure(self, coords, seq, t: int, unique_name: str, is_px0: bool = False) -> str:
+        with self._measure("particle_pdb_write"):
+            return self._save_particle_structure(coords, seq, t, unique_name, is_px0)
+
+    def _save_particle_structure(self, coords, seq, t: int, unique_name: str, is_px0: bool = False) -> str:
         """
         Save PDB file for particle structure at specific timestep
         Unified function for both px0 (denoised) and x_t (noisy) structures
